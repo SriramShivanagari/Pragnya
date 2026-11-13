@@ -1,0 +1,65 @@
+
+
+**Contributor:** `Gemini_1` | **Date:** November 13, 2026
+
+## 1. Product Identity & Vision
+
+* **Product Name:** **Pragnya KisanPulse**
+* **Tagline:** *From Passive Yield Numbers to Zero-Hardware Counterfactual Farm Decisions.*
+* **Core Value Proposition:** **Pragnya KisanPulse** fuses 10m all-weather satellite indices ([Sentinel-1 SAR](https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-1) + [Sentinel-2 Optical](https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2)), soil nutrient baselines ([Soil Health Card](https://www.pib.gov.in/PressReleasePage.aspx?PRID=2221117&reg=3&lang=1) + [ISRIC SoilGrids](https://un-spider.org/sites/default/files/GeoAI%20Compendium%202026.pdf)), and 7-day hyper-local weather forecasts to predict **uncertainty-bounded crop yields (`P10–P90`)** by Day 81 and simulate **"What-If" irrigation and fertilizer timing actions** that maximize yield while preventing water and urea waste.
+
+---
+
+## 2. Target User Personas (Section 9A)
+
+| Persona | Profile & Location | Core Pain Point Solved | What Inputs Can They Realistically Provide? |
+| :--- | :--- | :--- | :--- |
+| **Primary User: Smallholder & Medium Farmer (Ramesh, 2.5 Acres)** | Grows Kharif Paddy & Rabi Maize in Khammam (Telangana) or East Godavari (Andhra Pradesh); owns a basic Android phone with WhatsApp. | Applies 50 kg urea and flood irrigation on fixed calendar days; lost ₹14,000 when late-October cyclone rains washed away fertilizer and waterlogged his field ([DD News](https://ddnews.gov.in/en/cyclones-arnab-murasu-damage-crops-across-4-61-lakh-hectares-in-andhra-pradesh/)). | **3 taps only:** (1) GPS Location / Pin on Village Map (or AgriStack Farmer ID), (2) Crop Sown (`Paddy`), (3) Approximate Sowing/Transplanting Week. *Optional:* Last fertilizer/irrigation day or Soil Health Card N-P-K values if available. |
+| **Secondary User: FPO Manager / Krishi Vigyan Kendra (KVK) Extension Officer** | Manages 400–1,000 member farmers across a Mandal/Block in Punjab, Telangana, or Maharashtra. | Cannot visit 500 farms manually to check which plots are suffering mid-season moisture stress (`NDMI`) or nitrogen deficiency (`NDRE`). | Bulk CSV/GeoJSON upload of FPO member plot coordinates to view a color-coded **Village Stress & Yield-at-Risk Triage Map** and trigger automated WhatsApp voice advisories. |
+
+---
+
+## 3. Complete 10-Step System Workflow (Section 9B)
+
+1. **Zero-Typing Plot Onboarding:** The farmer opens the mobile web app (or WhatsApp bot), shares their GPS location (or selects their plot on the village satellite map / enters a mock [AgriStack UFSI](https://creuto.com/agristack-api-ufsi-farmer-registry-agritech) Farmer ID), selects their crop (`Paddy`, `Wheat`, `Cotton`, or `Maize`), and picks the sowing/transplanting week.
+2. **Automated Geospatial & Soil Retrieval:** The backend queries **ISRIC SoilGrids (250m)** and district/village **Soil Health Card** baselines to auto-fill `pH`, `Soil Organic Carbon (SOC)`, `Clay/Sand/Silt %`, and baseline `N, P, K` status—requiring zero manual lab numbers from the farmer (though the farmer can override them if they have a printed Soil Health Card).
+3. **All-Weather Satellite Time-Series Ingestion:** For the plot's 10m×10m bounding box from sowing date to current day, the system retrieves:
+   * **Sentinel-2 L2A Optical Indices:** **SAVI** (Soil-Adjusted Vegetation Index for early Day-81 yield trajectory per [IJISAE](https://ijisae.org/index.php/IJISAE/article/view/2326)), **NDMI** (Normalized Difference Moisture Index for canopy water stress), and **NDRE** (Normalized Difference Red-Edge for chlorophyll/nitrogen status).
+   * **Sentinel-1 C-Band SAR Fallback:** When cloud cover exceeds 30%, the pipeline fuses `VV` and `VH` radar backscatter and the Radar Vegetation Index (`RVI`) so monsoon cloud cover never blinds the model ([MDPI SAR Fusion](https://www.mdpi.com/2072-4292/17/8/1412)).
+4. **Agro-Meteorological & Forecast Ingestion:** Retrieves cumulative season weather (`Growing Degree Days (GDD)`, cumulative rainfall, solar radiation, vapor pressure deficit) from **NASA POWER** and the **next 7 days of hourly/daily precipitation probability, wind speed, and reference evapotranspiration ($ET_0$)** from **Open-Meteo / IMD**.
+5. **Input Completeness Check & Conformal Uncertainty Calibration:** An input validator checks which modalities are exact vs. imputed. If local soil test data or recent optical passes are missing, the system flags a **Data Completeness Score** and adjusts the conformal prediction intervals accordingly.
+6. **Hybrid Yield Prediction (`P10 / P50 / P90`):** A two-stage **CatBoost/XGBoost + Temporal Feature Engine** predicts the baseline district-calibrated yield and applies a pixel-level `SAVI/NDMI` anomaly multiplier to output:
+   * **P10 (Downside Risk Yield):** e.g., `18.2 Quintals/Acre` (if upcoming weather stress is unmanaged)
+   * **P50 (Expected Median Yield):** e.g., `22.4 Quintals/Acre`
+   * **P90 (Optimized Potential Yield):** e.g., `25.1 Quintals/Acre`
+7. **Agronomic Stress & Waste Diagnosis:** The engine evaluates three real-time physical budgets:
+   * **Root-Zone Water Balance:** Current `NDMI` + 7-day $\sum (Rain - ET_c)$.
+   * **Urea Leaching & Volatilization Risk:** Probability of $>20\text{ mm}$ rain within 48 hours of top-dressing or soil moisture saturation.
+   * **Phenological Sensitivity Weight ($K_y$):** Whether the crop is at a stress-critical stage (e.g., panicle initiation / flowering) or a tolerant stage.
+8. **Counterfactual Action Simulation ("What-If" Engine):** The optimizer simulates 3 concrete 7-day schedules (e.g., **Option A: Routine Action Today**, **Option B: AI-Recommended 4-Day Delay + Split Dose**, **Option C: Do Nothing**) and computes for each option:
+   * Expected Yield impact ($\Delta\text{ Quintals/Acre}$)
+   * Water consumed vs. saved ($\text{Litres/Acre}$)
+   * Fertilizer absorbed vs. leached ($\text{kg Urea wasted}$)
+   * **Net Financial Gain (`₹ Saved + ₹ Yield Protected`)**
+9. **Explainable UI & Vernacular Voice Delivery:** The farmer sees a simple traffic-light **Action Card** (*"HOLD IRRIGATION & DELAY UREA BY 4 DAYS — Saves ₹1,350 & 1.1 Lakh Litres/Acre"*) backed by a 1-tap **Telugu / Hindi / English audio button** and WhatsApp voice note summary.
+10. **Closed-Loop Post-Harvest Feedback:** At harvest, the farmer or FPO logs actual harvested bags/quintals, updating regional calibration weights for the next season.
+
+---
+
+## 4. User Interface Design & Major Screens (Section 9C)
+
+We prioritize **clarity, zero clutter, and progressive disclosure** across 4 core screens in our prototype:
+
+1. **Screen 1 — 3-Tap Plot Selector & Live Satellite Health Map:**
+   * Interactive Leaflet/Mapbox satellite view pre-loaded with demonstration clusters in **Telangana (Khammam/Nizamabad)**, **Andhra Pradesh (Kakinada/Prakasam)**, and **Punjab (Ludhiana/Sangrur)**.
+   * Toggle between **True Color**, **SAVI (Biomass Vigor)**, **NDMI (Water Stress)**, and **NDRE (Nitrogen Status)** overlays.
+2. **Screen 2 — Uncertainty-Aware Yield Forecast & Stress Gauge:**
+   * Displays the **P10 / P50 / P90 Yield Fan Chart** over the 120-day crop lifecycle, highlighting the **Day-81 SAVI Early Prediction Milestone** ([IJISAE](https://ijisae.org/index.php/IJISAE/article/view/2326)).
+   * Shows a clear **Prediction Confidence Badge** (e.g., `88% Confidence — Optical + SAR + SHC Verified`) and **SHAP Top-3 Drivers** (e.g., `+2.1 qtl from optimal Day-65 SAVI`, `-1.8 qtl risk from 42mm rain forecast on Day 74`).
+3. **Screen 3 — Counterfactual "What-If" Optimizer (The Judge-Winning Screen):**
+   * Interactive sliders allowing the user or judge to test:
+     * *Planned Urea Dose (0–60 kg/acre)* & *Application Day (Today vs. +1 to +7 Days)*
+     * *Planned Irrigation Depth (0–60 mm)* & *Weather Scenario (Normal vs. Heavy Rain / Cyclone vs. Dry Spell)*
+   * Side-by-side comparison cards showing **Farmer's Routine Plan** vs. **KisanPulse Optimized Plan** with live gauges for **Nitrogen Leaching Loss (%)**, **Water Saved (Litres)**, **Expected Yield (Qtl/Acre)**, and **Net Rupee Benefit (₹/Acre)**.
+4. **Screen 4 — Last-Mile Vernacular Advisory & FPO Village Triage View:**
+   * Pre-rendered **WhatsApp Notification Card** with playable **Telugu / Hindi / English voice audio** so judges can hear exactly what a smallholder farmer receives on their phone.
